@@ -59,7 +59,7 @@ def test_web_application_endpoints(sine_audio_file: Path) -> None:
     # Test GET index UI
     resp_index = client.get("/")
     assert resp_index.status_code == 200
-    assert "Sonara Reconstruction Engine" in resp_index.text
+    assert "Sonara Beat Deconstruction Workbench" in resp_index.text
 
     # Test POST upload
     with open(sine_audio_file, "rb") as f:
@@ -98,3 +98,12 @@ def test_web_application_endpoints(sine_audio_file: Path) -> None:
     # Test GET download SMR
     resp_dl = client.get(f"/api/download/smr/{session_id}")
     assert resp_dl.status_code == 200
+
+    # Test GET stem audio stream
+    resp_stem = client.get(f"/api/audio/{session_id}/stem/drums")
+    assert resp_stem.status_code == 200
+
+    # Test GET FL Studio pack
+    resp_fl = client.get(f"/api/download/fl_studio_pack/{session_id}")
+    assert resp_fl.status_code == 200
+    assert resp_fl.headers["content-type"] == "application/zip"
