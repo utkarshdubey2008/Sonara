@@ -185,6 +185,14 @@ def cmd_schema(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Launch the interactive web application for audio reconstruction."""
+    import uvicorn
+    print(f"[*] Starting Sonara Reconstruction Web Application on http://{args.host}:{args.port}")
+    uvicorn.run("sonara.app:app", host=args.host, port=args.port, reload=False)
+    return 0
+
+
 def cmd_info(args: argparse.Namespace) -> int:
     """Display Sonara engine information."""
     print("Sonara: Musical Representation and Intelligence System")
@@ -238,6 +246,11 @@ def main() -> int:
     p_schema = subparsers.add_parser("schema", help="Export SMR JSON Schema")
     p_schema.add_argument("--output", "-o", default="smr_schema_v1.0.0.json", help="Output JSON path")
 
+    # serve
+    p_serve = subparsers.add_parser("serve", help="Launch interactive reconstruction web app")
+    p_serve.add_argument("--host", default="0.0.0.0", help="Host address (default: 0.0.0.0)")
+    p_serve.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+
     # info
     subparsers.add_parser("info", help="Display system and specification information")
 
@@ -249,6 +262,7 @@ def main() -> int:
         "compare": cmd_compare,
         "generate": cmd_generate,
         "schema": cmd_schema,
+        "serve": cmd_serve,
         "info": cmd_info,
     }
 

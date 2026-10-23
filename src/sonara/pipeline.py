@@ -93,12 +93,12 @@ class SonaraPipeline:
         struct_res = self.structure_analyzer.analyze(waveform, self.target_sr)
         warnings.extend(struct_res.uncertainty_flags)
 
-        # 6. Extract Discrete Musical Events
+        # 6. Extract Discrete Musical Events (Rhythm, Bass, Melodic)
         raw_events = self.event_extractor.extract_events(
             waveform, self.target_sr, onset_timestamps=rhythm_res.onset_timestamps
         )
 
-        # 7. Convert Events to Pydantic Models
+        # 7. Convert Events to Pydantic Models & Inject Decoded Harmonic Chords
         event_models: List[MusicalEventModel] = []
         for e in raw_events:
             event_models.append(
@@ -118,6 +118,46 @@ class SonaraPipeline:
                     uncertainty_flags=e.uncertainty_flags,
                 )
             )
+
+        # Inject decoded harmonic chords as sustained polyphonic pad events
+        pitch_map = {"C": 60, "C#": 61, "D": 62, "D#": 63, "E": 64, "F": 65, "F#": 66, "G": 67, "G#": 68, "A": 69, "A#": 70, "B": 71}
+        chord_counter = len(event_models)
+        for ch in harmony_res.chord_sequence:
+            root_midi = pitch_map.get(ch.root, 60)
+            if ch.quality == "min":
+                intervals = [0, 3, 7]
+            elif ch.quality == "7":
+                intervals = [0, 4, 7, 10]
+            elif ch.quality == "dim":
+                intervals = [0, 3, 6]
+            else:  # maj default
+                intervals = [0, 4, 7]
+
+            for interval in intervals:
+                c_note = root_midi + interval
+                c_freq = round(440.0 * (2 ** ((c_note - 69) / 12)), 2)
+                c_dur = round(max(0.1, ch.end_time - ch.start_time), 3)
+                event_models.append(
+                    MusicalEventModel(
+                        event_id=f"evt_harm_{chord_counter:04d}",
+                        start_time=round(ch.start_time, 3),
+                        duration=c_dur,
+                        end_time=round(ch.start_time + c_dur, 3),
+                        layer=LayerClassifier.LAYER_HARMONIC,
+                        event_type="chord",
+                        pitch_midi=c_note,
+                        pitch_name=list(pitch_map.keys())[c_note % 12] + str(c_note // 12 - 1),
+                        frequency_hz=c_freq,
+                        cents_deviation=0.0,
+                        velocity=68,
+                        confidence=round(ch.confidence, 3),
+                        uncertainty_flags=["decoded_from_chroma_progression"],
+                    )
+                )
+                chord_counter += 1
+
+        # Re-sort all events chronologically
+        event_models.sort(key=lambda ev: (ev.start_time, ev.layer))
 
         # 8. Compute Layer Interactions (Bass & Percussion Synchrony)
         layer_interactions: List[LayerInteractionModel] = []

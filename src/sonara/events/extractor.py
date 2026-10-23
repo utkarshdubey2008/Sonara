@@ -1,10 +1,10 @@
-"""Discrete musical event extraction from audio waveforms."""
+"""Discrete musical event extraction from audio waveforms with multi-layer decomposition."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import librosa
 import numpy as np
@@ -50,7 +50,7 @@ class ExtractedEvent:
 
 
 class EventExtractor:
-    """Extracts discrete musical events and note parameters from audio signals."""
+    """Extracts discrete musical events and note parameters with multi-layer decomposition."""
 
     def __init__(self, hop_length: int = 512, n_fft: int = 2048):
         self.hop_length = hop_length
@@ -60,7 +60,7 @@ class EventExtractor:
         self, y: np.ndarray, sr: int, onset_timestamps: List[float]
     ) -> List[ExtractedEvent]:
         """
-        Extract discrete musical events at detected onset locations.
+        Extract multi-layered discrete musical events (percussion, bass, melodic).
 
         Args:
             y: Audio waveform array.
@@ -68,7 +68,7 @@ class EventExtractor:
             onset_timestamps: List of onset times in seconds.
 
         Returns:
-            List of ExtractedEvent instances.
+            List of ExtractedEvent instances sorted by start time.
         """
         events: List[ExtractedEvent] = []
         total_duration = float(len(y)) / float(sr) if sr > 0 else 0.0
@@ -76,124 +76,158 @@ class EventExtractor:
         if not onset_timestamps or total_duration <= 0.0:
             return events
 
-        # Sort onsets
+        # Filter and sort onsets
         sorted_onsets = sorted([t for t in onset_timestamps if 0.0 <= t < total_duration])
         if not sorted_onsets:
             return events
 
-        # Precompute spectral features for quick frame querying
-        spec_cent = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=self.hop_length)[0]
-        zcr = librosa.feature.zero_crossing_rate(y=y, hop_length=self.hop_length)[0]
+        # Precompute short-time Fourier transform for spectral querying
+        stft = np.abs(librosa.stft(y, n_fft=self.n_fft, hop_length=self.hop_length))
+        freqs = librosa.fft_frequencies(sr=sr, n_fft=self.n_fft)
         rms = librosa.feature.rms(y=y, hop_length=self.hop_length)[0]
         max_rms = float(np.max(rms)) if len(rms) > 0 and np.max(rms) > 0 else 1.0
 
-        n_frames = len(rms)
-        frame_times = librosa.frames_to_time(np.arange(n_frames), sr=sr, hop_length=self.hop_length)
+        low_mask = (freqs >= 30.0) & (freqs <= 160.0)
+        mid_mask = (freqs >= 200.0) & (freqs <= 2500.0)
+        high_mask = (freqs >= 4000.0)
+
+        n_frames = stft.shape[1]
+        event_counter = 0
 
         for i, t_start in enumerate(sorted_onsets):
-            event_id = f"evt_{i:04d}"
-            # Duration extends until the next onset or max 2.0s
             t_next = sorted_onsets[i + 1] if i + 1 < len(sorted_onsets) else total_duration
-            raw_dur = min(2.0, max(0.05, t_next - t_start))
-            t_end = min(total_duration, t_start + raw_dur)
-            dur = t_end - t_start
+            dur = min(2.0, max(0.06, t_next - t_start))
+            t_end = min(total_duration, t_start + dur)
 
-            # Find matching frame index
             frame_idx = int(np.clip(t_start * sr / self.hop_length, 0, n_frames - 1))
-            cur_rms = float(rms[frame_idx]) if frame_idx < n_frames else 0.0
-            cur_cent = float(spec_cent[frame_idx]) if frame_idx < len(spec_cent) else 1000.0
-            cur_zcr = float(zcr[frame_idx]) if frame_idx < len(zcr) else 0.0
+            cur_rms = float(rms[frame_idx]) if frame_idx < len(rms) else 0.0
+            norm_vel = int(np.clip(127.0 * (cur_rms / max_rms), 20, 127))
 
-            # Velocity normalized from RMS amplitude
-            velocity = int(np.clip(127.0 * (cur_rms / max_rms), 10, 127))
+            frame_spec = stft[:, frame_idx]
+            total_frame_energy = np.sum(frame_spec) + 1e-8
+            low_energy_ratio = float(np.sum(frame_spec[low_mask]) / total_frame_energy)
+            mid_energy_ratio = float(np.sum(frame_spec[mid_mask]) / total_frame_energy)
+            high_energy_ratio = float(np.sum(frame_spec[high_mask]) / total_frame_energy)
 
-            # Extract windowed slice for pitch estimation
+            # Windowed slice for fundamental frequency analysis
             s_start = int(t_start * sr)
-            s_end = min(len(y), s_start + int(min(dur, 0.4) * sr))
+            s_end = min(len(y), s_start + int(min(dur, 0.35) * sr))
             slice_y = y[s_start:s_end]
 
-            pitch_midi: Optional[int] = None
-            pitch_name: Optional[str] = None
-            f0_hz: Optional[float] = None
-            cents: Optional[float] = None
-            is_harmonic = False
-            uncertainty_flags: List[str] = []
+            f0, harmonicity = self._estimate_pitch(slice_y, sr) if len(slice_y) >= self.n_fft // 2 else (None, 0.0)
 
-            if len(slice_y) >= self.n_fft // 2:
-                f0, harmonicity = self._estimate_pitch(slice_y, sr)
-                if f0 is not None and 30.0 <= f0 <= 4000.0 and harmonicity > 0.35:
-                    f0_hz = round(f0, 2)
-                    raw_midi = 69 + 12 * math.log2(f0 / 440.0)
-                    m_int = int(round(raw_midi))
-                    if 12 <= m_int <= 120:
-                        pitch_midi = m_int
-                        pitch_name = midi_to_note_name(m_int)
-                        cents = round((raw_midi - m_int) * 100.0, 1)
-                        is_harmonic = True
-                        if harmonicity < 0.55:
-                            uncertainty_flags.append("pitch_uncertain")
-                else:
-                    uncertainty_flags.append("unpitched_or_percussive")
-            else:
-                uncertainty_flags.append("short_transient")
-
-            # Layer assignment
-            layer = LayerClassifier.classify_event(
-                pitch_midi=pitch_midi,
-                frequency_hz=f0_hz,
-                spectral_centroid=cur_cent,
-                zero_crossing_rate=cur_zcr,
-                is_harmonic=is_harmonic,
-            )
-
-            # Event type
-            if layer == LayerClassifier.LAYER_PERCUSSION:
-                event_type = "hit"
-            elif pitch_midi is not None:
-                event_type = "note"
-            else:
-                event_type = "onset"
-
-            # Confidence score
-            base_conf = 0.85 if is_harmonic else 0.65
-            if "pitch_uncertain" in uncertainty_flags:
-                base_conf -= 0.20
-            if cur_rms / max_rms < 0.1:
-                base_conf -= 0.15
-                uncertainty_flags.append("low_energy")
-
-            confidence = float(np.clip(base_conf, 0.1, 1.0))
-
-            events.append(
-                ExtractedEvent(
-                    event_id=event_id,
-                    start_time=round(t_start, 3),
-                    duration=round(dur, 3),
-                    end_time=round(t_end, 3),
-                    layer=layer,
-                    event_type=event_type,
-                    pitch_midi=pitch_midi,
-                    pitch_name=pitch_name,
-                    frequency_hz=f0_hz,
-                    cents_deviation=cents,
-                    velocity=velocity,
-                    confidence=round(confidence, 3),
-                    uncertainty_flags=uncertainty_flags,
+            # 1. Percussion Layer Detection
+            # Kick detection: strong sub-160Hz energy burst
+            if low_energy_ratio > 0.30 and cur_rms / max_rms > 0.15:
+                events.append(
+                    ExtractedEvent(
+                        event_id=f"evt_{event_counter:04d}",
+                        start_time=round(t_start, 3),
+                        duration=round(min(0.25, dur), 3),
+                        end_time=round(t_start + min(0.25, dur), 3),
+                        layer=LayerClassifier.LAYER_PERCUSSION,
+                        event_type="hit",
+                        pitch_midi=36,  # Standard General MIDI Kick
+                        pitch_name="C1",
+                        frequency_hz=65.4,
+                        cents_deviation=0.0,
+                        velocity=norm_vel,
+                        confidence=0.88,
+                        uncertainty_flags=[],
+                    )
                 )
-            )
+                event_counter += 1
 
+            # Snare detection: mid-range energy with transient sharpness
+            if mid_energy_ratio > 0.35 and (f0 is None or harmonicity < 0.45) and cur_rms / max_rms > 0.18:
+                events.append(
+                    ExtractedEvent(
+                        event_id=f"evt_{event_counter:04d}",
+                        start_time=round(t_start, 3),
+                        duration=round(min(0.18, dur), 3),
+                        end_time=round(t_start + min(0.18, dur), 3),
+                        layer=LayerClassifier.LAYER_PERCUSSION,
+                        event_type="hit",
+                        pitch_midi=38,  # Standard General MIDI Snare
+                        pitch_name="D1",
+                        frequency_hz=73.4,
+                        cents_deviation=0.0,
+                        velocity=int(norm_vel * 0.9),
+                        confidence=0.80,
+                        uncertainty_flags=[],
+                    )
+                )
+                event_counter += 1
+
+            # Hi-hat detection: high-frequency crisp energy
+            if high_energy_ratio > 0.20 and cur_rms / max_rms > 0.08:
+                events.append(
+                    ExtractedEvent(
+                        event_id=f"evt_{event_counter:04d}",
+                        start_time=round(t_start, 3),
+                        duration=round(min(0.08, dur), 3),
+                        end_time=round(t_start + min(0.08, dur), 3),
+                        layer=LayerClassifier.LAYER_PERCUSSION,
+                        event_type="hit",
+                        pitch_midi=42,  # Standard General MIDI Closed Hat
+                        pitch_name="F#1",
+                        frequency_hz=92.5,
+                        cents_deviation=0.0,
+                        velocity=int(norm_vel * 0.75),
+                        confidence=0.82,
+                        uncertainty_flags=[],
+                    )
+                )
+                event_counter += 1
+
+            # 2. Pitched Note Extraction (Bass or Melodic Lead)
+            if f0 is not None and 35.0 <= f0 <= 2500.0 and harmonicity > 0.35:
+                raw_midi = 69 + 12 * math.log2(f0 / 440.0)
+                m_int = int(round(raw_midi))
+                if 20 <= m_int <= 108:
+                    cents = round((raw_midi - m_int) * 100.0, 1)
+                    p_name = midi_to_note_name(m_int)
+
+                    if m_int <= 55 or f0 < 220.0:
+                        layer = LayerClassifier.LAYER_BASS
+                    elif m_int > 55:
+                        layer = LayerClassifier.LAYER_MELODIC
+                    else:
+                        layer = LayerClassifier.LAYER_HARMONIC
+
+                    conf = 0.90 if harmonicity > 0.6 else 0.72
+                    flags = [] if harmonicity > 0.55 else ["pitch_uncertain"]
+
+                    events.append(
+                        ExtractedEvent(
+                            event_id=f"evt_{event_counter:04d}",
+                            start_time=round(t_start, 3),
+                            duration=round(dur, 3),
+                            end_time=round(t_end, 3),
+                            layer=layer,
+                            event_type="note",
+                            pitch_midi=m_int,
+                            pitch_name=p_name,
+                            frequency_hz=round(f0, 2),
+                            cents_deviation=cents,
+                            velocity=norm_vel,
+                            confidence=round(conf, 3),
+                            uncertainty_flags=flags,
+                        )
+                    )
+                    event_counter += 1
+
+        # Sort all extracted events chronologically
+        events.sort(key=lambda e: (e.start_time, e.layer))
         return events
 
-    def _estimate_pitch(self, audio_slice: np.ndarray, sr: int) -> tuple[Optional[float], float]:
+    def _estimate_pitch(self, audio_slice: np.ndarray, sr: int) -> Tuple[Optional[float], float]:
         """Estimate fundamental frequency via normalized autocorrelation on windowed slice."""
         n = len(audio_slice)
         if n < 256:
             return None, 0.0
 
-        # Apply Hanning window
         windowed = audio_slice * np.hanning(n)
-
-        # Autocorrelation via FFT
         fft_size = 2 ** int(np.ceil(np.log2(2 * n - 1)))
         fft = np.fft.rfft(windowed, n=fft_size)
         ac = np.fft.irfft(fft * np.conj(fft), n=fft_size)[:n]
@@ -202,10 +236,8 @@ class EventExtractor:
             return None, 0.0
 
         ac_norm = ac / ac[0]
-
-        # Search in reasonable musical pitch range (50 Hz to 2000 Hz)
         min_lag = max(2, int(sr / 2000.0))
-        max_lag = min(n - 1, int(sr / 50.0))
+        max_lag = min(n - 1, int(sr / 45.0))
 
         if min_lag >= max_lag:
             return None, 0.0
@@ -214,7 +246,6 @@ class EventExtractor:
         if len(search_region) == 0:
             return None, 0.0
 
-        # Find peaks
         peaks, props = find_peaks(search_region, height=0.3, distance=int(sr / 4000.0) + 1)
         if len(peaks) == 0:
             return None, 0.0
@@ -223,7 +254,6 @@ class EventExtractor:
         actual_lag = min_lag + best_peak_idx
         harmonicity = float(ac_norm[actual_lag])
 
-        # Parabolic interpolation for fine sub-sample lag resolution
         if 0 < actual_lag < n - 1:
             alpha = ac_norm[actual_lag - 1]
             beta = ac_norm[actual_lag]
