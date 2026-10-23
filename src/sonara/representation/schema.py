@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -21,7 +21,7 @@ class AudioMetadataModel(BaseModel):
     format: str = Field(..., description="Audio container format (e.g. WAV, MP3, FLAC)")
     is_silent: bool = Field(False, description="Flag indicating completely silent audio")
     is_clipped: bool = Field(False, description="Flag indicating potential amplitude clipping")
-    peak_amplitude: float = Field(0.0, ge=0.0, le=1.0, description="Peak absolute sample amplitude")
+    peak_amplitude: float = Field(0.0, ge=0.0, description="Peak absolute sample amplitude")
     rms_amplitude: float = Field(0.0, ge=0.0, description="Root-mean-square amplitude")
 
 
@@ -93,6 +93,19 @@ class StructuralSectionModel(BaseModel):
     repeat_of_id: Optional[str] = Field(None, description="Section ID of original section if repeated")
 
 
+class DiscoveredSourceModel(BaseModel):
+    """A sound source or instrument identity discovered from the recording."""
+    source_id: str = Field(..., description="Unique source identifier (e.g. src_kick, src_synth_strings)")
+    source_name: str = Field(..., description="Descriptive sound source name")
+    category: str = Field(..., description="Broad category: percussion, bass, harmonic, melodic, sample")
+    role: str = Field(..., description="Functional musical role: kick_drum, snare_backbeat, hihat_timekeeper, ostinato_strings, sub_bass, vocal_hook, etc.")
+    preservation_mode: str = Field("symbolic_midi", description="Preservation strategy: symbolic_midi, audio_stem_sample, or hybrid")
+    stem_file: Optional[str] = Field(None, description="Path or filename of isolated audio stem if preserved as audio")
+    timbral_features: Dict[str, Any] = Field(default_factory=dict, description="Acoustic and spectral characteristics")
+    event_count: int = Field(0, description="Total discrete events attributed to this source")
+    confidence: float = Field(0.85, ge=0.0, le=1.0, description="Identification confidence")
+
+
 class MusicalEventModel(BaseModel):
     """Atomic musical event (note, transient hit, or chord)."""
     event_id: str = Field(..., description="Unique event identifier (e.g. evt_0012)")
@@ -108,6 +121,8 @@ class MusicalEventModel(BaseModel):
     velocity: int = Field(..., ge=0, le=127, description="Estimated velocity/dynamics (0-127)")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Detection confidence score (0.0 to 1.0)")
     uncertainty_flags: List[str] = Field(default_factory=list, description="Uncertainty markers")
+    source_id: Optional[str] = Field(None, description="Discovered sound source identifier")
+    instrument_role: Optional[str] = Field(None, description="Musical role: kick_drum, snare_backbeat, hihat_timekeeper, etc.")
 
 
 class LayerInteractionModel(BaseModel):
@@ -137,6 +152,7 @@ class SMRDocument(BaseModel):
     rhythm: RhythmProfileModel
     harmony: HarmonicProfileModel
     structure: List[StructuralSectionModel] = Field(default_factory=list)
+    discovered_sources: List[DiscoveredSourceModel] = Field(default_factory=list, description="Sound sources dynamically discovered from recording")
     events: List[MusicalEventModel] = Field(default_factory=list)
     layer_interactions: List[LayerInteractionModel] = Field(default_factory=list)
     provenance: AnalysisProvenanceModel

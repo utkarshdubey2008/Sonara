@@ -62,3 +62,4 @@ test_*.json
 test_*.md
 examples/demo_tracks/*.wav
 examples/demo_tracks/*.mid
+output/

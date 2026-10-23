@@ -47,6 +47,8 @@ class ExtractedEvent:
     velocity: int  # 0 to 127
     confidence: float
     uncertainty_flags: List[str] = field(default_factory=list)
+    source_id: Optional[str] = None
+    instrument_role: Optional[str] = None
 
 
 class EventExtractor:
@@ -134,6 +136,8 @@ class EventExtractor:
                         velocity=norm_vel,
                         confidence=0.88,
                         uncertainty_flags=[],
+                        source_id="src_kick",
+                        instrument_role="kick_drum",
                     )
                 )
                 event_counter += 1
@@ -155,6 +159,8 @@ class EventExtractor:
                         velocity=int(norm_vel * 0.9),
                         confidence=0.80,
                         uncertainty_flags=[],
+                        source_id="src_snare",
+                        instrument_role="snare_backbeat",
                     )
                 )
                 event_counter += 1
@@ -176,6 +182,8 @@ class EventExtractor:
                         velocity=int(norm_vel * 0.75),
                         confidence=0.82,
                         uncertainty_flags=[],
+                        source_id="src_hihat",
+                        instrument_role="hihat_timekeeper",
                     )
                 )
                 event_counter += 1
@@ -190,10 +198,16 @@ class EventExtractor:
 
                     if m_int <= 55 or f0 < 220.0:
                         layer = LayerClassifier.LAYER_BASS
+                        src_id = "src_bass"
+                        role = "synth_bass"
                     elif m_int > 55:
                         layer = LayerClassifier.LAYER_MELODIC
+                        src_id = "src_melodic"
+                        role = "synth_lead"
                     else:
                         layer = LayerClassifier.LAYER_HARMONIC
+                        src_id = "src_strings"
+                        role = "ostinato_strings"
 
                     conf = 0.90 if harmonicity > 0.6 else 0.72
                     flags = [] if harmonicity > 0.55 else ["pitch_uncertain"]
@@ -213,6 +227,8 @@ class EventExtractor:
                             velocity=norm_vel,
                             confidence=round(conf, 3),
                             uncertainty_flags=flags,
+                            source_id=src_id,
+                            instrument_role=role,
                         )
                     )
                     event_counter += 1
