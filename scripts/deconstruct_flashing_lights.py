@@ -250,9 +250,15 @@ def main():
     synth.render(document, symbolic_wav)
     print(f"Symbolic Reconstruction saved: {symbolic_wav} ({symbolic_wav.stat().st_size / (1024*1024):.2f} MB)")
 
-    # B. Hybrid reconstruction (Separated sample stem + synthesized drum kit & bass)
+    # B. Pure rhythm engine (Synthesized drums + analog sub-bass only)
+    rhythm_doc = document.model_copy(deep=True)
+    rhythm_doc.events = [e for e in document.events if e.layer in ["percussion", "bass"]]
+    rhythm_wav = out_dir / "rhythm_engine.wav"
+    synth.render(rhythm_doc, rhythm_wav)
+    y_rhythm, sr_synth = sf.read(str(rhythm_wav))
+
+    # C. Hybrid reconstruction (Clean rhythm engine + authentic sample stems with kick sidechain)
     hybrid_wav = out_dir / "reconstruction_hybrid.wav"
-    y_synth, sr_synth = sf.read(str(symbolic_wav))
     y_melody, sr_mel = sf.read(str(stems_dict["melody_samples"]))
     y_vocals, sr_voc = sf.read(str(stems_dict["vocals"]))
 
@@ -262,11 +268,24 @@ def main():
     if sr_voc != sr_synth:
         y_vocals = librosa.resample(y_vocals, orig_sr=sr_voc, target_sr=sr_synth)
 
-    min_len = min(y_synth.shape[0], len(y_melody), len(y_vocals))
-    # Combine synth stereo with melody/vocal mono stems
+    # Compute kick sidechain ducking envelope on strings stem
+    kick_times = [e.start_time for e in document.events if e.layer == "percussion" and e.pitch_midi == 36]
+    duck_len = int(0.065 * sr_synth)  # 65ms duck
+    duck_env = np.ones(len(y_melody), dtype=np.float32)
+    duck_shape = 1.0 - 0.30 * np.exp(-np.linspace(0, 3.5, duck_len))
+
+    for kt in kick_times:
+        idx = int(kt * sr_synth)
+        if idx + duck_len < len(duck_env):
+            duck_env[idx : idx + duck_len] = np.minimum(duck_env[idx : idx + duck_len], duck_shape)
+
+    min_len = min(y_rhythm.shape[0], len(y_melody), len(y_vocals))
+    ducked_melody = y_melody[:min_len] * duck_env[:min_len]
+
+    # Combine punchy rhythm engine + ducked authentic strings + vocal hook
     y_hybrid = np.zeros((min_len, 2), dtype=np.float32)
-    y_hybrid[:, 0] = y_synth[:min_len, 0] * 0.70 + y_melody[:min_len] * 0.65 + y_vocals[:min_len] * 0.40
-    y_hybrid[:, 1] = y_synth[:min_len, 1] * 0.70 + y_melody[:min_len] * 0.65 + y_vocals[:min_len] * 0.40
+    y_hybrid[:, 0] = y_rhythm[:min_len, 0] * 0.85 + ducked_melody * 0.70 + y_vocals[:min_len] * 0.45
+    y_hybrid[:, 1] = y_rhythm[:min_len, 1] * 0.85 + ducked_melody * 0.70 + y_vocals[:min_len] * 0.45
     peak = np.max(np.abs(y_hybrid))
     if peak > 0:
         y_hybrid = (y_hybrid / peak) * 0.94
@@ -296,6 +315,11 @@ def main():
     generate_interactive_timeline_html(document, timeline_html)
     print(f"Timeline HTML generated: {timeline_html}")
 
+    import zipfile
+    timeline_zip = out_dir / "timeline_bundle.zip"
+    with zipfile.ZipFile(timeline_zip, "w") as zf:
+        zf.write(timeline_html, "timeline.html")
+
     # 7. Upload Key Deliverables to tmpfiles.org
     print("\n[Upload] Uploading deliverables to tmpfiles.org...")
     files_to_upload = [
@@ -305,7 +329,7 @@ def main():
         ("Full Multi-track MIDI", full_midi_path),
         ("Symbolic Reconstructed Audio", symbolic_wav),
         ("Hybrid Reconstructed Audio", hybrid_wav),
-        ("Visual Timeline HTML", timeline_html),
+        ("Visual Timeline HTML Bundle", timeline_zip),
     ]
 
     upload_results = {}

@@ -89,12 +89,43 @@ class EventExtractor:
         rms = librosa.feature.rms(y=y, hop_length=self.hop_length)[0]
         max_rms = float(np.max(rms)) if len(rms) > 0 and np.max(rms) > 0 else 1.0
 
+        # Separate transient percussive energy and harmonic resonance via HPSS
+        y_harm, y_perc = y, y
+        if len(y) >= self.n_fft * 2:
+            try:
+                y_harm, y_perc = librosa.effects.hpss(y)
+            except Exception:
+                y_harm, y_perc = y, y
+
+        hop = self.hop_length
+        # Percussive activity envelope to gate drum hits during quiet intros and breakdowns
+        rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop)[0]
+        max_rms_perc = float(np.max(rms_perc)) if len(rms_perc) > 0 and np.max(rms_perc) > 0 else 1.0
+
+        # Sub-band signals on percussive and harmonic components
+        from scipy.signal import butter, sosfilt
+        sos_k = butter(4, [35.0, 120.0], btype="bandpass", fs=sr, output="sos")
+        y_kick = sosfilt(sos_k, y_perc)
+        rms_k = librosa.feature.rms(y=y_kick, hop_length=self.hop_length)[0]
+        max_k = float(np.max(rms_k)) if len(rms_k) > 0 and np.max(rms_k) > 0 else 1.0
+
+        sos_s = butter(4, [250.0, 2500.0], btype="bandpass", fs=sr, output="sos")
+        y_snare = sosfilt(sos_s, y_perc)
+        rms_s = librosa.feature.rms(y=y_snare, hop_length=self.hop_length)[0]
+        max_s = float(np.max(rms_s)) if len(rms_s) > 0 and np.max(rms_s) > 0 else 1.0
+
+        sos_b = butter(4, 140.0, btype="lowpass", fs=sr, output="sos")
+        y_bass = sosfilt(sos_b, y_harm)
+        rms_b = librosa.feature.rms(y=y_bass, hop_length=self.hop_length)[0]
+        max_b = float(np.max(rms_b)) if len(rms_b) > 0 and np.max(rms_b) > 0 else 1.0
+
         low_mask = (freqs >= 30.0) & (freqs <= 160.0)
         mid_mask = (freqs >= 200.0) & (freqs <= 2500.0)
         high_mask = (freqs >= 4000.0)
 
         n_frames = stft.shape[1]
         event_counter = 0
+        prev_kick_time: Optional[float] = None
 
         for i, t_start in enumerate(sorted_onsets):
             t_next = sorted_onsets[i + 1] if i + 1 < len(sorted_onsets) else total_duration
@@ -104,6 +135,10 @@ class EventExtractor:
             frame_idx = int(np.clip(t_start * sr / self.hop_length, 0, n_frames - 1))
             cur_rms = float(rms[frame_idx]) if frame_idx < len(rms) else 0.0
             norm_vel = int(np.clip(127.0 * (cur_rms / max_rms), 20, 127))
+
+            k_val = float(rms_k[frame_idx]) if frame_idx < len(rms_k) else 0.0
+            s_val = float(rms_s[frame_idx]) if frame_idx < len(rms_s) else 0.0
+            b_val = float(rms_b[frame_idx]) if frame_idx < len(rms_b) else 0.0
 
             frame_spec = stft[:, frame_idx]
             total_frame_energy = np.sum(frame_spec) + 1e-8
@@ -118,117 +153,143 @@ class EventExtractor:
 
             f0, harmonicity = self._estimate_pitch(slice_y, sr) if len(slice_y) >= self.n_fft // 2 else (None, 0.0)
 
-            # 1. Percussion Layer Detection
-            # Kick detection: strong sub-160Hz energy burst
-            if low_energy_ratio > 0.30 and cur_rms / max_rms > 0.15:
-                events.append(
-                    ExtractedEvent(
-                        event_id=f"evt_{event_counter:04d}",
-                        start_time=round(t_start, 3),
-                        duration=round(min(0.25, dur), 3),
-                        end_time=round(t_start + min(0.25, dur), 3),
-                        layer=LayerClassifier.LAYER_PERCUSSION,
-                        event_type="hit",
-                        pitch_midi=36,  # Standard General MIDI Kick
-                        pitch_name="C1",
-                        frequency_hz=65.4,
-                        cents_deviation=0.0,
-                        velocity=norm_vel,
-                        confidence=0.88,
-                        uncertainty_flags=[],
-                        source_id="src_kick",
-                        instrument_role="kick_drum",
-                    )
-                )
-                event_counter += 1
+            # Percussion Engine: only trigger when genuine percussive energy exists
+            # In quiet intros, breakdowns, or outro fades, k_val < 0.04 and s_val < 0.03
+            is_perc_active = (k_val >= 0.05 or s_val >= 0.045) or (low_energy_ratio > 0.32 and cur_rms / max_rms > 0.20)
 
-            # Snare detection: mid-range energy with transient sharpness
-            if mid_energy_ratio > 0.35 and (f0 is None or harmonicity < 0.45) and cur_rms / max_rms > 0.18:
-                events.append(
-                    ExtractedEvent(
-                        event_id=f"evt_{event_counter:04d}",
-                        start_time=round(t_start, 3),
-                        duration=round(min(0.18, dur), 3),
-                        end_time=round(t_start + min(0.18, dur), 3),
-                        layer=LayerClassifier.LAYER_PERCUSSION,
-                        event_type="hit",
-                        pitch_midi=38,  # Standard General MIDI Snare
-                        pitch_name="D1",
-                        frequency_hz=73.4,
-                        cents_deviation=0.0,
-                        velocity=int(norm_vel * 0.9),
-                        confidence=0.80,
-                        uncertainty_flags=[],
-                        source_id="src_snare",
-                        instrument_role="snare_backbeat",
-                    )
-                )
-                event_counter += 1
+            if is_perc_active:
+                # 1. Kick Drum: strong sub-120Hz percussive punch
+                if k_val >= 0.06 or (low_energy_ratio > 0.30 and cur_rms / max_rms > 0.18):
+                    kick_vel = int(np.clip(127.0 * (k_val / max_k * 1.15), 40, 127))
+                    # Drop entrance accentuation: if kick follows prolonged silence (>2.0s), boost impact
+                    if prev_kick_time is None or (t_start - prev_kick_time > 2.0):
+                        kick_vel = int(np.clip(kick_vel * 1.5, 95, 127))
+                    prev_kick_time = t_start
 
-            # Hi-hat detection: high-frequency crisp energy
-            if high_energy_ratio > 0.20 and cur_rms / max_rms > 0.08:
-                events.append(
-                    ExtractedEvent(
-                        event_id=f"evt_{event_counter:04d}",
-                        start_time=round(t_start, 3),
-                        duration=round(min(0.08, dur), 3),
-                        end_time=round(t_start + min(0.08, dur), 3),
-                        layer=LayerClassifier.LAYER_PERCUSSION,
-                        event_type="hit",
-                        pitch_midi=42,  # Standard General MIDI Closed Hat
-                        pitch_name="F#1",
-                        frequency_hz=92.5,
-                        cents_deviation=0.0,
-                        velocity=int(norm_vel * 0.75),
-                        confidence=0.82,
-                        uncertainty_flags=[],
-                        source_id="src_hihat",
-                        instrument_role="hihat_timekeeper",
+                    events.append(
+                        ExtractedEvent(
+                            event_id=f"evt_{event_counter:04d}",
+                            start_time=round(t_start, 3),
+                            duration=round(min(0.25, dur), 3),
+                            end_time=round(t_start + min(0.25, dur), 3),
+                            layer=LayerClassifier.LAYER_PERCUSSION,
+                            event_type="hit",
+                            pitch_midi=36,  # Standard General MIDI Kick
+                            pitch_name="C1",
+                            frequency_hz=65.4,
+                            cents_deviation=0.0,
+                            velocity=kick_vel,
+                            confidence=0.92,
+                            uncertainty_flags=[],
+                            source_id="src_kick",
+                            instrument_role="kick_drum",
+                        )
                     )
-                )
-                event_counter += 1
+                    event_counter += 1
 
-            # 2. Pitched Note Extraction (Bass or Melodic Lead)
-            if f0 is not None and 35.0 <= f0 <= 2500.0 and harmonicity > 0.35:
+                # 2. Snare Drum: crisp mid-range percussive crack
+                if s_val >= 0.055 or (mid_energy_ratio > 0.35 and (f0 is None or harmonicity < 0.45) and cur_rms / max_rms > 0.18):
+                    snare_vel = int(np.clip(127.0 * (s_val / max_s * 1.15), 35, 127))
+                    events.append(
+                        ExtractedEvent(
+                            event_id=f"evt_{event_counter:04d}",
+                            start_time=round(t_start, 3),
+                            duration=round(min(0.18, dur), 3),
+                            end_time=round(t_start + min(0.18, dur), 3),
+                            layer=LayerClassifier.LAYER_PERCUSSION,
+                            event_type="hit",
+                            pitch_midi=38,  # Standard General MIDI Snare
+                            pitch_name="D1",
+                            frequency_hz=73.4,
+                            cents_deviation=0.0,
+                            velocity=snare_vel,
+                            confidence=0.88,
+                            uncertainty_flags=[],
+                            source_id="src_snare",
+                            instrument_role="snare_backbeat",
+                        )
+                    )
+                    event_counter += 1
+
+                # 3. Closed Hi-Hat: high-frequency metallic crispness
+                if high_energy_ratio > 0.16 and cur_rms / max_rms > 0.08:
+                    hat_vel = int(np.clip(127.0 * (cur_rms / max_rms * 0.75), 20, 115))
+                    events.append(
+                        ExtractedEvent(
+                            event_id=f"evt_{event_counter:04d}",
+                            start_time=round(t_start, 3),
+                            duration=round(min(0.08, dur), 3),
+                            end_time=round(t_start + min(0.08, dur), 3),
+                            layer=LayerClassifier.LAYER_PERCUSSION,
+                            event_type="hit",
+                            pitch_midi=42,  # Standard General MIDI Closed Hat
+                            pitch_name="F#1",
+                            frequency_hz=92.5,
+                            cents_deviation=0.0,
+                            velocity=hat_vel,
+                            confidence=0.85,
+                            uncertainty_flags=[],
+                            source_id="src_hihat",
+                            instrument_role="hihat_timekeeper",
+                        )
+                    )
+                    event_counter += 1
+
+            # Pitched Note Extraction (Bass or Strings/Harmonic Bed)
+            if f0 is not None and 35.0 <= f0 <= 220.0 and harmonicity > 0.35:
                 raw_midi = 69 + 12 * math.log2(f0 / 440.0)
                 m_int = int(round(raw_midi))
-                if 20 <= m_int <= 108:
+                if 20 <= m_int <= 55:
+                    # Bassline: requires genuine low-frequency bass energy (b_val >= 0.08)
+                    # and active rhythm section, preventing spurious bass in strings-only intro/outro
+                    if (b_val >= 0.08 and is_perc_active) or (low_energy_ratio > 0.35 and cur_rms / max_rms > 0.20):
+                        cents = round((raw_midi - m_int) * 100.0, 1)
+                        p_name = midi_to_note_name(m_int)
+                        bass_vel = int(np.clip(127.0 * (b_val / max_b * 1.15), 35, 127))
+                        events.append(
+                            ExtractedEvent(
+                                event_id=f"evt_{event_counter:04d}",
+                                start_time=round(t_start, 3),
+                                duration=round(dur, 3),
+                                end_time=round(t_end, 3),
+                                layer=LayerClassifier.LAYER_BASS,
+                                event_type="note",
+                                pitch_midi=m_int,
+                                pitch_name=p_name,
+                                frequency_hz=round(f0, 2),
+                                cents_deviation=cents,
+                                velocity=bass_vel,
+                                confidence=0.88,
+                                uncertainty_flags=[],
+                                source_id="src_bass",
+                                instrument_role="synth_bass",
+                            )
+                        )
+                        event_counter += 1
+            elif f0 is not None and f0 > 220.0 and harmonicity > 0.70 and dur >= 0.18:
+                raw_midi = 69 + 12 * math.log2(f0 / 440.0)
+                m_int = int(round(raw_midi))
+                if 55 < m_int <= 108:
                     cents = round((raw_midi - m_int) * 100.0, 1)
                     p_name = midi_to_note_name(m_int)
-
-                    if m_int <= 55 or f0 < 220.0:
-                        layer = LayerClassifier.LAYER_BASS
-                        src_id = "src_bass"
-                        role = "synth_bass"
-                    elif m_int > 55:
-                        layer = LayerClassifier.LAYER_MELODIC
-                        src_id = "src_melodic"
-                        role = "synth_lead"
-                    else:
-                        layer = LayerClassifier.LAYER_HARMONIC
-                        src_id = "src_strings"
-                        role = "ostinato_strings"
-
-                    conf = 0.90 if harmonicity > 0.6 else 0.72
-                    flags = [] if harmonicity > 0.55 else ["pitch_uncertain"]
-
+                    # Route to LAYER_HARMONIC (strings/pads) to eliminate electric piano plucks!
                     events.append(
                         ExtractedEvent(
                             event_id=f"evt_{event_counter:04d}",
                             start_time=round(t_start, 3),
                             duration=round(dur, 3),
                             end_time=round(t_end, 3),
-                            layer=layer,
+                            layer=LayerClassifier.LAYER_HARMONIC,
                             event_type="note",
                             pitch_midi=m_int,
                             pitch_name=p_name,
                             frequency_hz=round(f0, 2),
                             cents_deviation=cents,
-                            velocity=norm_vel,
-                            confidence=round(conf, 3),
-                            uncertainty_flags=flags,
-                            source_id=src_id,
-                            instrument_role=role,
+                            velocity=int(norm_vel * 0.70),
+                            confidence=round(harmonicity, 3),
+                            uncertainty_flags=[],
+                            source_id="src_strings",
+                            instrument_role="ostinato_strings",
                         )
                     )
                     event_counter += 1

@@ -83,61 +83,86 @@ class SMRSynthesizer:
     def _synth_drum(
         self, pitch_midi: Optional[int], dur: float, amp: float
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Synthesize drum hits (kick, snare, hi-hat)."""
+        """Synthesize punchy production drum hits (kick, snare, hi-hat, open hat)."""
         sr = self.sample_rate
-        n = int(dur * sr)
+        n = max(32, int(dur * sr))
         t = np.linspace(0.0, dur, n, endpoint=False)
 
-        # Kick
+        # Kick Drum (MIDI 36)
         if pitch_midi is None or pitch_midi <= 36:
-            f_start = 140.0
-            f_end = 45.0
-            freq_curve = f_start * (f_end / f_start) ** (t / max(0.1, dur))
-            phase = 2 * np.pi * np.cumsum(freq_curve) / sr
-            envelope = np.exp(-t * 14.0)
-            sig = np.sin(phase) * envelope * amp * 1.2
-            return sig, sig  # Center panned
+            f_start = 220.0
+            f_sub = 48.0
+            pitch_env = f_sub + (f_start - f_sub) * np.exp(-t * 85.0)
+            phase = 2 * np.pi * np.cumsum(pitch_env) / sr
+            body = np.sin(phase) * np.exp(-t * 9.5)
+            click = np.sin(2 * np.pi * 1800.0 * t) * np.exp(-t * 380.0) * 0.45
+            sig = np.tanh((body + click) * 1.35) * amp * 1.3
+            return sig, sig  # Centered punch
 
-        # Snare
+        # Snare Drum / Rimshot (MIDI 38)
         elif pitch_midi <= 40:
-            env_body = np.exp(-t * 22.0)
-            body = np.sin(2 * np.pi * 185.0 * t) * env_body
-            env_noise = np.exp(-t * 16.0)
-            noise = (np.random.rand(n) * 2 - 1) * env_noise
-            sig = (body * 0.6 + noise * 0.7) * amp
-            return sig * 0.9, sig * 1.1  # Slight right pan
+            pitch_env = 165.0 + 45.0 * np.exp(-t * 60.0)
+            phase = 2 * np.pi * np.cumsum(pitch_env) / sr
+            body = np.sin(phase) * np.exp(-t * 24.0)
+            raw_noise = np.random.rand(n) * 2 - 1
+            from scipy.signal import butter, sosfilt
+            sos = butter(4, 1100.0, btype="highpass", fs=sr, output="sos")
+            noise_filt = sosfilt(sos, raw_noise) * np.exp(-t * 18.0)
+            sig = np.tanh(body * 0.85 + noise_filt * 1.1) * amp * 1.15
+            return sig * 0.95, sig * 1.05  # Stereo spread
 
-        # Hi-hat / cymbal
+        # Open Hat / Crash (MIDI 46)
+        elif pitch_midi == 46:
+            raw_noise = np.random.rand(n) * 2 - 1
+            from scipy.signal import butter, sosfilt
+            hi_cut = min(sr * 0.48, 12000.0)
+            low_cut = min(hi_cut - 500.0, 4500.0)
+            sos = butter(4, [low_cut, hi_cut], btype="bandpass", fs=sr, output="sos")
+            noise_filt = sosfilt(sos, raw_noise) * np.exp(-t * 12.0)
+            sig = np.tanh(noise_filt * 1.8) * amp * 0.85
+            return sig * 1.1, sig * 0.9
+
+        # Closed Hi-Hat (MIDI 42 or other percussion)
         else:
-            env = np.exp(-t * 45.0)
-            noise = (np.random.rand(n) * 2 - 1) * env
-            sig = noise * amp * 0.5
-            return sig * 1.1, sig * 0.9  # Slight left pan
+            raw_noise = np.random.rand(n) * 2 - 1
+            from scipy.signal import butter, sosfilt
+            hi_cut = min(sr * 0.48, 10000.0)
+            low_cut = min(hi_cut - 500.0, 5000.0)
+            sos = butter(4, [low_cut, hi_cut], btype="bandpass", fs=sr, output="sos")
+            noise_filt = sosfilt(sos, raw_noise) * np.exp(-t * 55.0)
+            sig = np.tanh(noise_filt * 2.2) * amp * 0.75
+            return sig * 1.05, sig * 0.95
 
     def _synth_bass(self, freq: float, dur: float, amp: float) -> tuple[np.ndarray, np.ndarray]:
-        """Synthesize warm sub-bass with harmonic richness."""
+        """Synthesize deep, warm analog Moog-style sub-bass."""
         sr = self.sample_rate
-        n = int(dur * sr)
+        n = max(32, int(dur * sr))
         t = np.linspace(0.0, dur, n, endpoint=False)
 
-        env = np.exp(-t * 2.8)
-        # Fundamental sine + 2nd harmonic
-        f1 = np.sin(2 * np.pi * freq * t)
-        f2 = 0.35 * np.sin(2 * np.pi * (freq * 2) * t)
-        f3 = 0.15 * np.sin(2 * np.pi * (freq * 3) * t)
+        freq = max(35.0, min(240.0, freq))
+        sub = np.sin(2 * np.pi * freq * t)
+        saw = 2 * (t * freq - np.floor(0.5 + t * freq))
+        from scipy.signal import butter, sosfilt
+        sos = butter(4, 260.0, btype="lowpass", fs=sr, output="sos")
+        saw_filt = sosfilt(sos, saw)
 
-        sig = (f1 + f2 + f3) * env * amp * 1.1
-        return sig, sig  # Center panned
+        env = np.ones(n)
+        rel_len = min(n // 2, int(0.08 * sr))
+        if rel_len > 0:
+            env[-rel_len:] = np.linspace(1, 0, rel_len)
+
+        sig = np.tanh(sub * 0.75 + saw_filt * 0.50) * env * amp * 1.2
+        return sig, sig  # Centered sub
 
     def _synth_pad(self, freq: float, dur: float, amp: float) -> tuple[np.ndarray, np.ndarray]:
-        """Synthesize warm stereo pad with detuned chorus effect."""
+        """Synthesize warm stereo strings/pad with lush detuned chorus."""
         sr = self.sample_rate
-        n = int(dur * sr)
+        n = max(32, int(dur * sr))
         t = np.linspace(0.0, dur, n, endpoint=False)
 
-        # Smooth attack & release envelope
-        attack_time = min(0.1, dur * 0.2)
-        release_time = min(0.2, dur * 0.3)
+        # Smooth attack & release envelope (prevents clicking)
+        attack_time = min(0.12, dur * 0.25)
+        release_time = min(0.25, dur * 0.35)
         env = np.ones(n)
         att_samples = int(attack_time * sr)
         rel_samples = int(release_time * sr)
@@ -147,26 +172,35 @@ class SMRSynthesizer:
             env[-rel_samples:] = np.linspace(1, 0, rel_samples)
 
         # Detuned stereo oscillators for width
-        osc_l = np.sin(2 * np.pi * (freq * 0.998) * t) + 0.3 * np.sin(2 * np.pi * (freq * 1.996) * t)
-        osc_r = np.sin(2 * np.pi * (freq * 1.002) * t) + 0.3 * np.sin(2 * np.pi * (freq * 2.004) * t)
+        osc_l = np.sin(2 * np.pi * (freq * 0.998) * t) + 0.35 * np.sin(2 * np.pi * (freq * 1.996) * t)
+        osc_r = np.sin(2 * np.pi * (freq * 1.002) * t) + 0.35 * np.sin(2 * np.pi * (freq * 2.004) * t)
 
-        return osc_l * env * amp, osc_r * env * amp
+        return osc_l * env * amp * 0.9, osc_r * env * amp * 0.9
 
     def _synth_lead(self, freq: float, dur: float, amp: float) -> tuple[np.ndarray, np.ndarray]:
-        """Synthesize melodic lead synth with vibrato."""
+        """Synthesize smooth analog synth lead with vibrato (non-percussive)."""
         sr = self.sample_rate
-        n = int(dur * sr)
+        n = max(32, int(dur * sr))
         t = np.linspace(0.0, dur, n, endpoint=False)
 
-        # Vibrato LFO: 5.0 Hz
-        vibrato = 1.0 + 0.015 * np.sin(2 * np.pi * 5.0 * t)
+        # Vibrato LFO: 4.5 Hz
+        vibrato = 1.0 + 0.012 * np.sin(2 * np.pi * 4.5 * t)
         phase = 2 * np.pi * np.cumsum(freq * vibrato) / sr
 
-        # Band-limited rounded square/triangle wave
-        osc = np.sin(phase) + 0.25 * np.sin(3 * phase)
+        # Saturated sawtooth through lowpass filter
+        saw = 2 * (phase / (2 * np.pi) - np.floor(0.5 + phase / (2 * np.pi)))
+        from scipy.signal import butter, sosfilt
+        sos = butter(4, min(sr * 0.45, max(800.0, freq * 3.5)), btype="lowpass", fs=sr, output="sos")
+        saw_filt = sosfilt(sos, saw)
 
-        # Attack-decay envelope
-        env = np.exp(-t * 2.0)
-        sig = osc * env * amp
+        # Smooth sustained envelope with soft attack and decay (not a piano pluck)
+        att_len = min(n // 4, int(0.05 * sr))
+        rel_len = min(n // 4, int(0.08 * sr))
+        env = np.ones(n)
+        if att_len > 0:
+            env[:att_len] = np.linspace(0, 1, att_len)
+        if rel_len > 0:
+            env[-rel_len:] = np.linspace(1, 0, rel_len)
 
+        sig = np.tanh(saw_filt * 1.1) * env * amp
         return sig * 0.95, sig * 1.05
