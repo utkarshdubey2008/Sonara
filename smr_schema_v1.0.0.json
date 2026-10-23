@@ -1,0 +1,750 @@
+{
+  "$defs": {
+    "AcousticFeaturesModel": {
+      "description": "Acoustic, timbral, and spectral descriptors.",
+      "properties": {
+        "rms_energy_mean": {
+          "description": "Mean frame-wise RMS energy",
+          "title": "Rms Energy Mean",
+          "type": "number"
+        },
+        "dynamic_range_db": {
+          "description": "Dynamic range in decibels",
+          "title": "Dynamic Range Db",
+          "type": "number"
+        },
+        "crest_factor": {
+          "description": "Ratio of peak amplitude to RMS energy",
+          "title": "Crest Factor",
+          "type": "number"
+        },
+        "spectral_centroid_mean": {
+          "description": "Perceived brightness (centroid) in Hz",
+          "title": "Spectral Centroid Mean",
+          "type": "number"
+        },
+        "spectral_centroid_std": {
+          "description": "Standard deviation of spectral centroid",
+          "title": "Spectral Centroid Std",
+          "type": "number"
+        },
+        "spectral_bandwidth_mean": {
+          "description": "Spectral frequency spread in Hz",
+          "title": "Spectral Bandwidth Mean",
+          "type": "number"
+        },
+        "spectral_rolloff_mean": {
+          "description": "85% energy spectral rolloff in Hz",
+          "title": "Spectral Rolloff Mean",
+          "type": "number"
+        },
+        "spectral_flatness_mean": {
+          "description": "Wiener entropy / noisiness (0.0 to 1.0)",
+          "title": "Spectral Flatness Mean",
+          "type": "number"
+        },
+        "zero_crossing_rate_mean": {
+          "description": "Average zero crossing rate",
+          "title": "Zero Crossing Rate Mean",
+          "type": "number"
+        },
+        "warmth_index": {
+          "description": "Proportion of spectral energy below 500 Hz",
+          "title": "Warmth Index",
+          "type": "number"
+        },
+        "brightness_index": {
+          "description": "Proportion of spectral energy above 3000 Hz",
+          "title": "Brightness Index",
+          "type": "number"
+        },
+        "spectral_contrast_mean": {
+          "description": "Octave-band spectral contrast",
+          "items": {
+            "type": "number"
+          },
+          "title": "Spectral Contrast Mean",
+          "type": "array"
+        },
+        "mfcc_mean": {
+          "description": "Mean MFCC vector (13 coefficients)",
+          "items": {
+            "type": "number"
+          },
+          "title": "Mfcc Mean",
+          "type": "array"
+        },
+        "mfcc_std": {
+          "description": "Standard deviation MFCC vector",
+          "items": {
+            "type": "number"
+          },
+          "title": "Mfcc Std",
+          "type": "array"
+        },
+        "uncertainty_flags": {
+          "description": "DSP uncertainty warnings",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainty Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rms_energy_mean",
+        "dynamic_range_db",
+        "crest_factor",
+        "spectral_centroid_mean",
+        "spectral_centroid_std",
+        "spectral_bandwidth_mean",
+        "spectral_rolloff_mean",
+        "spectral_flatness_mean",
+        "zero_crossing_rate_mean",
+        "warmth_index",
+        "brightness_index"
+      ],
+      "title": "AcousticFeaturesModel",
+      "type": "object"
+    },
+    "AnalysisProvenanceModel": {
+      "description": "Metadata regarding analysis execution, versions, and limitations.",
+      "properties": {
+        "system_name": {
+          "default": "Sonara",
+          "description": "Analysis engine name",
+          "title": "System Name",
+          "type": "string"
+        },
+        "system_version": {
+          "description": "Sonara software version",
+          "title": "System Version",
+          "type": "string"
+        },
+        "smr_schema_version": {
+          "default": "1.0.0",
+          "description": "SMR format schema version",
+          "title": "Smr Schema Version",
+          "type": "string"
+        },
+        "timestamp_utc": {
+          "description": "ISO 8601 UTC execution timestamp",
+          "title": "Timestamp Utc",
+          "type": "string"
+        },
+        "execution_time_seconds": {
+          "description": "Processing duration in seconds",
+          "minimum": 0.0,
+          "title": "Execution Time Seconds",
+          "type": "number"
+        },
+        "limitations": {
+          "description": "Explicit analysis limitations",
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "warnings": {
+          "description": "Runtime execution warnings",
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "system_version",
+        "timestamp_utc",
+        "execution_time_seconds"
+      ],
+      "title": "AnalysisProvenanceModel",
+      "type": "object"
+    },
+    "AudioMetadataModel": {
+      "description": "Audio physical and container attributes.",
+      "properties": {
+        "file_path": {
+          "description": "Path to source audio file",
+          "title": "File Path",
+          "type": "string"
+        },
+        "file_name": {
+          "description": "Audio file basename",
+          "title": "File Name",
+          "type": "string"
+        },
+        "file_size_bytes": {
+          "description": "File size in bytes",
+          "minimum": 0,
+          "title": "File Size Bytes",
+          "type": "integer"
+        },
+        "sha256_hash": {
+          "description": "SHA-256 integrity hash",
+          "title": "Sha256 Hash",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "description": "Total duration in seconds",
+          "minimum": 0.0,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "sample_rate": {
+          "description": "Audio sample rate in Hz",
+          "exclusiveMinimum": 0,
+          "title": "Sample Rate",
+          "type": "integer"
+        },
+        "channels": {
+          "description": "Number of audio channels",
+          "exclusiveMinimum": 0,
+          "title": "Channels",
+          "type": "integer"
+        },
+        "format": {
+          "description": "Audio container format (e.g. WAV, MP3, FLAC)",
+          "title": "Format",
+          "type": "string"
+        },
+        "is_silent": {
+          "default": false,
+          "description": "Flag indicating completely silent audio",
+          "title": "Is Silent",
+          "type": "boolean"
+        },
+        "is_clipped": {
+          "default": false,
+          "description": "Flag indicating potential amplitude clipping",
+          "title": "Is Clipped",
+          "type": "boolean"
+        },
+        "peak_amplitude": {
+          "default": 0.0,
+          "description": "Peak absolute sample amplitude",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Peak Amplitude",
+          "type": "number"
+        },
+        "rms_amplitude": {
+          "default": 0.0,
+          "description": "Root-mean-square amplitude",
+          "minimum": 0.0,
+          "title": "Rms Amplitude",
+          "type": "number"
+        }
+      },
+      "required": [
+        "file_path",
+        "file_name",
+        "file_size_bytes",
+        "sha256_hash",
+        "duration_seconds",
+        "sample_rate",
+        "channels",
+        "format"
+      ],
+      "title": "AudioMetadataModel",
+      "type": "object"
+    },
+    "ChordItemModel": {
+      "description": "Harmonic chord segment.",
+      "properties": {
+        "chord_symbol": {
+          "description": "Chord symbol (e.g. C:maj, A:min)",
+          "title": "Chord Symbol",
+          "type": "string"
+        },
+        "root": {
+          "description": "Root note (e.g. C, G#)",
+          "title": "Root",
+          "type": "string"
+        },
+        "quality": {
+          "description": "Triad quality (maj, min, 7, dim)",
+          "title": "Quality",
+          "type": "string"
+        },
+        "start_time": {
+          "description": "Onset time in seconds",
+          "minimum": 0.0,
+          "title": "Start Time",
+          "type": "number"
+        },
+        "end_time": {
+          "description": "Offset time in seconds",
+          "minimum": 0.0,
+          "title": "End Time",
+          "type": "number"
+        },
+        "confidence": {
+          "description": "Detection confidence",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "chord_symbol",
+        "root",
+        "quality",
+        "start_time",
+        "end_time",
+        "confidence"
+      ],
+      "title": "ChordItemModel",
+      "type": "object"
+    },
+    "HarmonicProfileModel": {
+      "description": "Tonal and harmonic characteristics.",
+      "properties": {
+        "primary_key": {
+          "description": "Estimated tonal center (e.g. C, F#, Bb)",
+          "title": "Primary Key",
+          "type": "string"
+        },
+        "mode": {
+          "description": "Mode (major, minor, or unknown)",
+          "title": "Mode",
+          "type": "string"
+        },
+        "key_confidence": {
+          "description": "Key estimation confidence",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Key Confidence",
+          "type": "number"
+        },
+        "tonal_stability": {
+          "description": "Correlation to ideal diatonic profile",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Tonal Stability",
+          "type": "number"
+        },
+        "chord_vocabulary": {
+          "description": "Unique chords used across the track",
+          "items": {
+            "type": "string"
+          },
+          "title": "Chord Vocabulary",
+          "type": "array"
+        },
+        "chord_sequence": {
+          "description": "Chronological chord progression",
+          "items": {
+            "$ref": "#/$defs/ChordItemModel"
+          },
+          "title": "Chord Sequence",
+          "type": "array"
+        },
+        "chroma_profile": {
+          "description": "12-bin pitch class distribution",
+          "items": {
+            "type": "number"
+          },
+          "title": "Chroma Profile",
+          "type": "array"
+        },
+        "uncertainty_flags": {
+          "description": "Harmonic ambiguity warnings",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainty Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "primary_key",
+        "mode",
+        "key_confidence",
+        "tonal_stability"
+      ],
+      "title": "HarmonicProfileModel",
+      "type": "object"
+    },
+    "LayerInteractionModel": {
+      "description": "Statistical interaction between different instrument layers.",
+      "properties": {
+        "layer_pair": {
+          "description": "E.g. bass_percussion, melodic_harmonic",
+          "title": "Layer Pair",
+          "type": "string"
+        },
+        "synchrony_score": {
+          "description": "Rhythmic alignment between layers",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Synchrony Score",
+          "type": "number"
+        },
+        "density_ratio": {
+          "description": "Ratio of event density between the two layers",
+          "minimum": 0.0,
+          "title": "Density Ratio",
+          "type": "number"
+        },
+        "harmonic_support_overlap": {
+          "default": 0.0,
+          "description": "Harmonic alignment ratio",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Harmonic Support Overlap",
+          "type": "number"
+        }
+      },
+      "required": [
+        "layer_pair",
+        "synchrony_score",
+        "density_ratio"
+      ],
+      "title": "LayerInteractionModel",
+      "type": "object"
+    },
+    "MusicalEventModel": {
+      "description": "Atomic musical event (note, transient hit, or chord).",
+      "properties": {
+        "event_id": {
+          "description": "Unique event identifier (e.g. evt_0012)",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "start_time": {
+          "description": "Start timestamp in seconds",
+          "minimum": 0.0,
+          "title": "Start Time",
+          "type": "number"
+        },
+        "duration": {
+          "description": "Estimated duration in seconds",
+          "minimum": 0.0,
+          "title": "Duration",
+          "type": "number"
+        },
+        "end_time": {
+          "description": "End timestamp in seconds",
+          "minimum": 0.0,
+          "title": "End Time",
+          "type": "number"
+        },
+        "layer": {
+          "description": "Functional layer: percussion, bass, harmonic, melodic, or unknown",
+          "title": "Layer",
+          "type": "string"
+        },
+        "event_type": {
+          "description": "Event type: note, hit, chord, onset, rest",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "pitch_midi": {
+          "anyOf": [
+            {
+              "maximum": 127,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIDI note number (0-127)",
+          "title": "Pitch Midi"
+        },
+        "pitch_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Standard note name (e.g. C4, A#2)",
+          "title": "Pitch Name"
+        },
+        "frequency_hz": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fundamental frequency in Hz",
+          "title": "Frequency Hz"
+        },
+        "cents_deviation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tuning deviation in cents (-50 to +50)",
+          "title": "Cents Deviation"
+        },
+        "velocity": {
+          "description": "Estimated velocity/dynamics (0-127)",
+          "maximum": 127,
+          "minimum": 0,
+          "title": "Velocity",
+          "type": "integer"
+        },
+        "confidence": {
+          "description": "Detection confidence score (0.0 to 1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "uncertainty_flags": {
+          "description": "Uncertainty markers",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainty Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "event_id",
+        "start_time",
+        "duration",
+        "end_time",
+        "layer",
+        "event_type",
+        "velocity",
+        "confidence"
+      ],
+      "title": "MusicalEventModel",
+      "type": "object"
+    },
+    "RhythmProfileModel": {
+      "description": "Rhythmic, tempo, and groove metrics.",
+      "properties": {
+        "estimated_bpm": {
+          "description": "Estimated beats per minute",
+          "minimum": 0.0,
+          "title": "Estimated Bpm",
+          "type": "number"
+        },
+        "tempo_confidence": {
+          "description": "Confidence in tempo estimation",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Tempo Confidence",
+          "type": "number"
+        },
+        "time_signature_estimate": {
+          "default": "4/4",
+          "description": "Estimated metric meter (e.g. 4/4, 3/4)",
+          "title": "Time Signature Estimate",
+          "type": "string"
+        },
+        "beat_count": {
+          "description": "Total detected beats",
+          "minimum": 0,
+          "title": "Beat Count",
+          "type": "integer"
+        },
+        "onset_count": {
+          "description": "Total detected transient onsets",
+          "minimum": 0,
+          "title": "Onset Count",
+          "type": "integer"
+        },
+        "onset_density_per_second": {
+          "description": "Onset frequency per second",
+          "minimum": 0.0,
+          "title": "Onset Density Per Second",
+          "type": "number"
+        },
+        "syncopation_index": {
+          "description": "Proportion of syncopated onsets",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Syncopation Index",
+          "type": "number"
+        },
+        "pulse_clarity": {
+          "description": "Periodicity / clarity of rhythmic pulse",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Pulse Clarity",
+          "type": "number"
+        },
+        "is_rhythmic": {
+          "default": true,
+          "description": "Whether track exhibits discernible rhythm",
+          "title": "Is Rhythmic",
+          "type": "boolean"
+        },
+        "beat_timestamps": {
+          "description": "Timestamps of detected beats",
+          "items": {
+            "type": "number"
+          },
+          "title": "Beat Timestamps",
+          "type": "array"
+        },
+        "uncertainty_flags": {
+          "description": "Rhythm estimation flags",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainty Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "estimated_bpm",
+        "tempo_confidence",
+        "beat_count",
+        "onset_count",
+        "onset_density_per_second",
+        "syncopation_index",
+        "pulse_clarity"
+      ],
+      "title": "RhythmProfileModel",
+      "type": "object"
+    },
+    "StructuralSectionModel": {
+      "description": "Hierarchical formal section of a musical composition.",
+      "properties": {
+        "section_id": {
+          "description": "Unique section identifier (e.g. sec_0)",
+          "title": "Section Id",
+          "type": "string"
+        },
+        "section_type": {
+          "description": "Functional role: intro, verse, chorus, bridge, outro, transition, body",
+          "title": "Section Type",
+          "type": "string"
+        },
+        "start_time": {
+          "description": "Start time in seconds",
+          "minimum": 0.0,
+          "title": "Start Time",
+          "type": "number"
+        },
+        "end_time": {
+          "description": "End time in seconds",
+          "minimum": 0.0,
+          "title": "End Time",
+          "type": "number"
+        },
+        "duration": {
+          "description": "Duration of section in seconds",
+          "minimum": 0.0,
+          "title": "Duration",
+          "type": "number"
+        },
+        "confidence": {
+          "description": "Segmentation confidence",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "is_repetition": {
+          "default": false,
+          "description": "Whether this section repeats an earlier section",
+          "title": "Is Repetition",
+          "type": "boolean"
+        },
+        "repeat_of_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Section ID of original section if repeated",
+          "title": "Repeat Of Id"
+        }
+      },
+      "required": [
+        "section_id",
+        "section_type",
+        "start_time",
+        "end_time",
+        "duration",
+        "confidence"
+      ],
+      "title": "StructuralSectionModel",
+      "type": "object"
+    }
+  },
+  "description": "Complete Sonara Musical Representation (SMR) Document.",
+  "properties": {
+    "smr_version": {
+      "default": "1.0.0",
+      "description": "SMR specification version",
+      "title": "Smr Version",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/AudioMetadataModel"
+    },
+    "acoustic_features": {
+      "$ref": "#/$defs/AcousticFeaturesModel"
+    },
+    "rhythm": {
+      "$ref": "#/$defs/RhythmProfileModel"
+    },
+    "harmony": {
+      "$ref": "#/$defs/HarmonicProfileModel"
+    },
+    "structure": {
+      "items": {
+        "$ref": "#/$defs/StructuralSectionModel"
+      },
+      "title": "Structure",
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/MusicalEventModel"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "layer_interactions": {
+      "items": {
+        "$ref": "#/$defs/LayerInteractionModel"
+      },
+      "title": "Layer Interactions",
+      "type": "array"
+    },
+    "provenance": {
+      "$ref": "#/$defs/AnalysisProvenanceModel"
+    }
+  },
+  "required": [
+    "metadata",
+    "acoustic_features",
+    "rhythm",
+    "harmony",
+    "provenance"
+  ],
+  "title": "SMRDocument",
+  "type": "object"
+}

@@ -1,0 +1,167 @@
+{
+  "profile_version": "1.0.0",
+  "profile_name": "Demo_Artist_Profile",
+  "tracks_analyzed": 3,
+  "track_names": [
+    "track_1_funk_groove.wav",
+    "track_2_pop_energy.wav",
+    "track_3_lofi_chill.wav"
+  ],
+  "total_audio_duration_seconds": 47.05,
+  "rhythm": {
+    "mean_bpm": 108.9,
+    "bpm_std": 16.25,
+    "bpm_range": [
+      86.1,
+      123.0
+    ],
+    "mean_syncopation": 0.691,
+    "mean_onset_density": 4.43,
+    "mean_pulse_clarity": 0.806,
+    "dominant_meter": "4/4"
+  },
+  "harmony": {
+    "key_distribution": {
+      "D": 0.333,
+      "C": 0.333,
+      "F": 0.333
+    },
+    "mode_distribution": {
+      "major": 1.0
+    },
+    "mean_tonal_stability": 0.917,
+    "collective_chord_vocabulary": [
+      "A#:maj",
+      "A:maj",
+      "A:min",
+      "B:7",
+      "B:min",
+      "C:maj",
+      "D:7",
+      "D:maj",
+      "D:min",
+      "F:maj",
+      "G:7",
+      "G:maj"
+    ],
+    "chord_transition_matrix": {
+      "A:maj": {
+        "D:maj": 0.333,
+        "B:min": 0.667
+      },
+      "D:maj": {
+        "B:min": 0.333,
+        "G:maj": 0.333,
+        "A:maj": 0.333
+      },
+      "B:min": {
+        "A:maj": 0.25,
+        "B:7": 0.5,
+        "D:maj": 0.25
+      },
+      "B:7": {
+        "B:min": 0.5,
+        "D:maj": 0.5
+      },
+      "G:maj": {
+        "B:min": 0.333,
+        "A:min": 0.333,
+        "D:7": 0.333
+      },
+      "C:maj": {
+        "G:maj": 0.5,
+        "F:maj": 0.25,
+        "D:min": 0.25
+      },
+      "A:min": {
+        "D:7": 0.25,
+        "C:maj": 0.5,
+        "F:maj": 0.25
+      },
+      "D:7": {
+        "F:maj": 0.333,
+        "A:min": 0.333,
+        "C:maj": 0.333
+      },
+      "F:maj": {
+        "A:min": 0.4,
+        "D:min": 0.2,
+        "D:7": 0.4
+      },
+      "D:min": {
+        "F:maj": 0.5,
+        "G:7": 0.5
+      },
+      "G:7": {
+        "A#:maj": 1.0
+      },
+      "A#:maj": {
+        "F:maj": 1.0
+      }
+    }
+  },
+  "structure": {
+    "average_section_count": 3.7,
+    "average_section_duration": 4.27,
+    "repetition_density_mean": 0.611,
+    "section_type_frequencies": {
+      "intro": 0.364,
+      "verse": 0.545,
+      "chorus": 0.091
+    }
+  },
+  "timbre": {
+    "mean_spectral_centroid": 1238.6,
+    "mean_warmth_index": 0.448,
+    "mean_brightness_index": 0.153,
+    "mean_dynamic_range_db": 73.79,
+    "mean_crest_factor": 6.42
+  },
+  "evidence": [
+    {
+      "metric_name": "estimated_bpm",
+      "track_name": "track_1_funk_groove.wav",
+      "measured_value": 117.45
+    },
+    {
+      "metric_name": "syncopation_index",
+      "track_name": "track_1_funk_groove.wav",
+      "measured_value": 0.685
+    },
+    {
+      "metric_name": "estimated_bpm",
+      "track_name": "track_2_pop_energy.wav",
+      "measured_value": 123.05
+    },
+    {
+      "metric_name": "syncopation_index",
+      "track_name": "track_2_pop_energy.wav",
+      "measured_value": 0.675
+    },
+    {
+      "metric_name": "estimated_bpm",
+      "track_name": "track_3_lofi_chill.wav",
+      "measured_value": 86.13
+    },
+    {
+      "metric_name": "syncopation_index",
+      "track_name": "track_3_lofi_chill.wav",
+      "measured_value": 0.712
+    },
+    {
+      "metric_name": "spectral_centroid_mean",
+      "track_name": "track_1_funk_groove.wav",
+      "measured_value": 1284.1
+    },
+    {
+      "metric_name": "spectral_centroid_mean",
+      "track_name": "track_2_pop_energy.wav",
+      "measured_value": 1295.4
+    },
+    {
+      "metric_name": "spectral_centroid_mean",
+      "track_name": "track_3_lofi_chill.wav",
+      "measured_value": 1136.3
+    }
+  ]
+}
