@@ -122,7 +122,11 @@ class ReconstructionComparator:
         bpm_orig = float(tempo_orig[0]) if isinstance(tempo_orig, np.ndarray) and tempo_orig.ndim > 0 else float(tempo_orig)
         bpm_recon = float(tempo_recon[0]) if isinstance(tempo_recon, np.ndarray) and tempo_recon.ndim > 0 else float(tempo_recon)
 
-        tempo_err = abs(bpm_orig - bpm_recon)
+        # Standard MIR octave-invariant tempo error (handles half-time and double-time equivalence)
+        err_direct = abs(bpm_orig - bpm_recon)
+        err_double = abs(bpm_orig - bpm_recon * 2.0)
+        err_half = abs(bpm_orig * 2.0 - bpm_recon)
+        tempo_err = min(err_direct, err_double, err_half)
         tempo_align = max(0.0, 1.0 - (tempo_err / max(1.0, bpm_orig)))
 
         metrics.append(
